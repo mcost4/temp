@@ -1,0 +1,26 @@
+{
+  "name": "stock-monitor",
+  "version": "1.0.0",
+  "description": "Aplicativo web para monitorar cotações de ações em tempo real",
+  "main": "backend/main.py",
+  "scripts": {
+    "setup": "bash setup.sh",
+    "deploy": "bash deploy.sh",
+    "docker:build": "docker-compose build",
+    "docker:up": "docker-compose up",
+    "docker:down": "docker-compose down"
+  },
+  "keywords": [
+    "stocks",
+    "monitor",
+    "api",
+    "fastapi",
+    "react",
+    "real-time"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "python": ">=3.10"
+  }
+}

@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: stock-monitor-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - ALPHA_VANTAGE_API_KEY=${ALPHA_VANTAGE_API_KEY:-}
+      - STOCKS=${STOCKS:-NVDA,GE,CVX}
+      - UPDATE_INTERVAL=${UPDATE_INTERVAL:-60}
+    volumes:
+      - ./backend:/app
+    command: python main.py
+    networks:
+      - stock-monitor-network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: stock-monitor-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - stock-monitor-network
+
+networks:
+  stock-monitor-network:
+    driver: bridge

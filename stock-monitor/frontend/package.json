@@ -1,0 +1,9 @@
+{
+  "name": "stock-monitor-frontend",
+  "version": "1.0.0",
+  "description": "Frontend para monitorar cotações de ações",
+  "main": "index.html",
+  "scripts": {
+    "start": "python -m http.server 3000"
+  }
+}
