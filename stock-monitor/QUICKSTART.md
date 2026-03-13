@@ -33,6 +33,17 @@ nano backend/.env
 # Ou apenas usar dados de exemplo (sem API key)
 ```
 
+Para configurar fonte de Dividend Yield (DY):
+```bash
+# backend/.env
+DY_DATA_SOURCE=alpha_vantage  # alpha_vantage | finnhub | yahoo_finance
+```
+
+Se escolher Finnhub, configure também:
+```bash
+FINNHUB_API_KEY=sua_chave_finnhub
+```
+
 ### 3. Executar Backend
 ```bash
 cd backend
@@ -79,6 +90,10 @@ Acesse: http://localhost:3000
 - Acesse: https://www.alphavantage.co/api/
 - Registre-se
 - Copie sua API Key
+
+Opcional (Finnhub):
+- Acesse: https://finnhub.io/
+- Crie uma conta e gere sua API key
 
 ### 2. Configurar
 **Opção A - Via Interface Web:**
