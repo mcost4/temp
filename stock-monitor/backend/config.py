@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     alpha_vantage_api_key: str = ""
     finnhub_api_key: str = ""
     dy_data_source: str = "alpha_vantage"
-    stocks: str = "NVDA,GE,CVX"
+    stocks: str = "NVDA,GE,CVX,X,CCJ,SQM,PLTR,MARA,LLY,WMT"
     update_interval: int = 60
     
     class Config:

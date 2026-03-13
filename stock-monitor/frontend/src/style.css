@@ -47,7 +47,7 @@ body[data-theme='midnight'] {
 }
 
 .container {
-    max-width: 1200px;
+    max-width: 1780px;
     margin: 0 auto;
     background: linear-gradient(180deg, #0a111f 0%, #070d17 100%);
     border-radius: 16px;
@@ -442,9 +442,9 @@ body[data-theme='midnight'] .status-mock {
 
 .stocks-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-    gap: 20px;
-    padding: 30px 20px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 14px;
+    padding: 22px 16px;
     background: linear-gradient(180deg, #080f1b 0%, #060b13 100%);
 }
 
@@ -459,7 +459,7 @@ body[data-theme='midnight'] .stocks-grid {
 .stock-card {
     background: linear-gradient(180deg, #111d31 0%, #0d1728 100%);
     border-radius: 12px;
-    padding: 20px;
+    padding: 14px;
     box-shadow: 0 10px 18px rgba(0, 0, 0, 0.35);
     transition: all 0.3s ease;
     border: 1px solid #243756;
@@ -517,7 +517,7 @@ body.auto-refresh-active .stock-card:hover {
 
 .stock-ticker {
     font-family: 'Barlow Condensed', 'Space Grotesk', sans-serif;
-    font-size: 1.8rem;
+    font-size: 1.45rem;
     font-weight: 700;
     color: #d9eeff;
     margin-bottom: 4px;
@@ -532,7 +532,7 @@ body[data-theme='midnight'] .stock-ticker {
 }
 
 .stock-company-name {
-    font-size: 0.95rem;
+    font-size: 0.84rem;
     font-weight: 600;
     color: #9db3da;
     margin-bottom: 12px;
@@ -554,14 +554,14 @@ body[data-theme='midnight'] .stock-timestamp {
 
 .stock-logo-wrap {
     position: relative;
-    width: 52px;
-    height: 52px;
-    flex: 0 0 52px;
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
 }
 
 .stock-logo {
-    width: 52px;
-    height: 52px;
+    width: 42px;
+    height: 42px;
     object-fit: contain;
     border-radius: 14px;
     background: #101d33;
@@ -605,7 +605,7 @@ body[data-theme='midnight'] .stock-card[data-ticker='GE'] .stock-logo {
 }
 
 .stock-price {
-    font-size: 2rem;
+    font-size: 1.55rem;
     font-weight: 700;
     color: #f8fbff;
     margin-bottom: 10px;
@@ -691,7 +691,7 @@ body[data-theme='midnight'] .stock-dy label {
 }
 
 .stock-dy .value {
-    font-size: 1.3rem;
+    font-size: 1.1rem;
     font-weight: 700;
     color: #7feeff;
 }
@@ -716,7 +716,7 @@ body[data-theme='midnight'] .stock-dy .value {
     align-items: center;
     padding: 4px 10px;
     border-radius: 999px;
-    font-size: 0.75rem;
+    font-size: 0.68rem;
     font-weight: 700;
     letter-spacing: 0.01em;
     border: 1px solid transparent;
@@ -872,6 +872,24 @@ body[data-theme='editorial'] .footer {
 body[data-theme='midnight'] .footer {
     background: linear-gradient(90deg, #060606 0%, #000000 60%, #090909 100%);
     color: #d7e2f1;
+}
+
+@media (max-width: 1680px) {
+    .stocks-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 1280px) {
+    .stocks-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 980px) {
+    .stocks-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
 }
 
 @media (max-width: 768px) {

@@ -416,7 +416,14 @@ function getCompanyLogoUrl(ticker) {
     const logoMap = {
         NVDA: 'nvidia.com',
         GE: 'ge.com',
-        CVX: 'chevron.com'
+        CVX: 'chevron.com',
+        X: 'ussteel.com',
+        CCJ: 'cameco.com',
+        SQM: 'sqm.com',
+        PLTR: 'palantir.com',
+        MARA: 'mara.com',
+        LLY: 'lilly.com',
+        WMT: 'walmart.com'
     };
 
     const domain = logoMap[ticker];

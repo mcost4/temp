@@ -85,6 +85,13 @@ COMPANY_METADATA = {
     "NVDA": {"company_name": "NVIDIA", "dy": 0.03},
     "GE": {"company_name": "GE Aerospace", "dy": 0.37},
     "CVX": {"company_name": "Chevron", "dy": 4.12},
+    "X": {"company_name": "United States Steel", "dy": None},
+    "CCJ": {"company_name": "Cameco", "dy": None},
+    "SQM": {"company_name": "Sociedad Quimica y Minera", "dy": None},
+    "PLTR": {"company_name": "Palantir", "dy": None},
+    "MARA": {"company_name": "MARA Holdings", "dy": None},
+    "LLY": {"company_name": "Eli Lilly", "dy": None},
+    "WMT": {"company_name": "Walmart", "dy": None},
 }
 
 
