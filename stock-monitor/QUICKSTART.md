@@ -2,6 +2,24 @@
 
 ## ⚡ Execução Rápida em 5 Minutos
 
+### 0. Subir tudo com 1 comando
+```bash
+cd stock-monitor
+bash start.sh
+```
+
+Ou, se preferir:
+```bash
+cd stock-monitor
+npm start
+```
+
+- 🌐 **Frontend**: http://localhost:3000
+- 📡 **API**: http://localhost:8000
+- 📚 **Documentação API**: http://localhost:8000/docs
+
+Os processos ficam em background e os logs são salvos em `logs/backend.log` e `logs/frontend.log`.
+
 ### 1. Setup Automático
 ```bash
 bash setup.sh
