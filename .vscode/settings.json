@@ -1,0 +1,7 @@
+{
+    "python.defaultInterpreterPath": "${workspaceFolder}/stock-monitor/backend/venv/bin/python",
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}/stock-monitor/backend",
+        "${workspaceFolder}/stock-monitor/backend/venv/lib/python3.12/site-packages"
+    ]
+}
