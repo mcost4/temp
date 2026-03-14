@@ -48,23 +48,24 @@ FINNHUB_API_KEY=sua_chave_finnhub
 ```bash
 cd backend
 source venv/bin/activate
-python main.py
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 **Output esperado:**
 ```
+INFO:     Started reloader process
 INFO:     Uvicorn running on http://0.0.0.0:8000
 ```
 
 ### 4. Em outro terminal, executar Frontend
 ```bash
 cd frontend
-python -m http.server 3000
+npm start
 ```
 
 **Output esperado:**
 ```
-Serving HTTP on 0.0.0.0 port 3000
+Serving "." at http://0.0.0.0:3000
 ```
 
 ### 5. Acessar aplicativo
@@ -109,7 +110,7 @@ ALPHA_VANTAGE_API_KEY=sua_chave_aqui
 ### 3. Reiniciar Backend
 Pare o servidor (Ctrl+C) e execute novamente:
 ```bash
-python main.py
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 Os dados virão da API Alpha Vantage em tempo real!
@@ -167,11 +168,18 @@ curl "https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=NVDA&apikey
 ├─────────────────────────────────┤
 │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐
-│  │  NVDA    │  │   GE     │  │  CVX     │
-│  │ $875.50  │  │ $175.30  │  │ $152.75  │
-│  │ ↑ +3.45% │  │ ↓ -1.23% │  │ ↑ +2.10% │
-│  │ DY: 0.05%│  │ DY: 3.25%│  │ DY: 3.85%│
+│  │  FTNT    │  │  PANW    │  │  CRWD    │
+│  │  $83.40  │  │ $327.15  │  │ $362.80  │
+│  │ ↑ +1.18% │  │ ↓ -0.64% │  │ ↑ +2.45% │
+│  │ DY:  N/D │  │ DY:  N/D │  │ DY:  N/D │
 │  └──────────┘  └──────────┘  └──────────┘
+│
+│  ┌──────────┐  ┌──────────┐
+│  │   ZS     │  │  CHKP    │
+│  │ $212.35  │  │ $176.90  │
+│  │ ↑ +0.92% │  │ ↓ -0.48% │
+│  │ DY:  N/D │  │ DY:  N/D │
+│  └──────────┘  └──────────┘
 │
 └─────────────────────────────────┘
 ```
@@ -189,7 +197,7 @@ curl "https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=NVDA&apikey
 
 3. **Adicionar mais ações**
    - Edite `STOCKS` no arquivo `.env`
-   - Suporte: NVDA, GE, CVX, AAPL, MSFT, TSLA, FB, AMZN, BRK.B, JNJ, e +
+   - Suporte padrão: NVDA, GE, CVX, CCJ, SQM, PLTR, MARA, LLY, WMT, FTNT, PANW, CRWD, ZS, CHKP
 
 4. **Melhorias futuras**
    - Adicionar gráficos

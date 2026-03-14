@@ -27,7 +27,7 @@ start_backend() {
         exit 1
     fi
 
-    nohup bash -lc "cd '$ROOT_DIR/backend' && source venv/bin/activate && exec python main.py" \
+    nohup bash -lc "cd '$ROOT_DIR/backend' && source venv/bin/activate && exec uvicorn main:app --host 0.0.0.0 --port 8000 --reload" \
         >"$BACKEND_LOG" 2>&1 &
     echo $! > "$BACKEND_PID_FILE"
     echo "Iniciando backend... logs em $BACKEND_LOG"
@@ -39,7 +39,7 @@ start_frontend() {
         return
     fi
 
-    nohup bash -lc "cd '$ROOT_DIR/frontend' && exec python3 -m http.server 3000" \
+    nohup bash -lc "cd '$ROOT_DIR/frontend' && exec npx --yes live-server . --host=0.0.0.0 --port=3000 --no-browser --watch=." \
         >"$FRONTEND_LOG" 2>&1 &
     echo $! > "$FRONTEND_PID_FILE"
     echo "Iniciando frontend... logs em $FRONTEND_LOG"

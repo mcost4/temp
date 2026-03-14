@@ -17,6 +17,11 @@ Um aplicativo web completo para monitorar cotações de ações da bolsa america
 - **NVDA** - NVIDIA
 - **GE** - General Electric
 - **CVX** - Chevron
+- **FTNT** - Fortinet
+- **PANW** - Palo Alto Networks
+- **CRWD** - CrowdStrike
+- **ZS** - Zscaler
+- **CHKP** - Check Point Software
 
 ## 🛠️ Stack Tecnológico
 
@@ -64,14 +69,14 @@ cp .env.example .env
 
 ```
 ALPHA_VANTAGE_API_KEY=sua_chave_aqui
-STOCKS=NVDA,GE,CVX
+STOCKS=NVDA,GE,CVX,CCJ,SQM,PLTR,MARA,LLY,WMT,FTNT,PANW,CRWD,ZS,CHKP
 UPDATE_INTERVAL=60
 ```
 
 ### Passo 3: Executar Backend
 
 ```bash
-python main.py
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 O backend estará disponível em: http://localhost:8000
@@ -84,7 +89,7 @@ Em outro terminal:
 
 ```bash
 cd stock-monitor/frontend
-python -m http.server 3000
+npm start
 ```
 
 O frontend estará disponível em: http://localhost:3000
@@ -169,11 +174,11 @@ Retorna dados de todas as ações monitoradas.
 {
   "stocks": [
     {
-      "ticker": "NVDA",
-      "price": 875.50,
-      "variation_percent": 3.45,
-      "variation_abs": 29.25,
-      "dy": 0.05,
+      "ticker": "FTNT",
+      "price": 83.40,
+      "variation_percent": 1.18,
+      "variation_abs": 0.97,
+      "dy": null,
       "timestamp": "2024-01-15T10:30:00",
       "status": "success"
     }
@@ -186,7 +191,7 @@ Retorna dados de todas as ações monitoradas.
 Retorna dados de uma ação específica.
 
 **Parameters:**
-- `ticker` (string): Símbolo da ação (ex: NVDA)
+- `ticker` (string): Símbolo da ação (ex: FTNT)
 
 ### GET /health
 Health check do servidor.
@@ -195,7 +200,7 @@ Health check do servidor.
 
 ```
 ALPHA_VANTAGE_API_KEY    # Sua chave de API (obtida em alphavantage.co)
-STOCKS                   # Lista de ações separadas por vírgula (padrão: NVDA,GE,CVX)
+STOCKS                   # Lista de ações separadas por vírgula (padrão: NVDA,GE,CVX,CCJ,SQM,PLTR,MARA,LLY,WMT,FTNT,PANW,CRWD,ZS,CHKP)
 UPDATE_INTERVAL          # Intervalo de atualização em segundos (padrão: 60)
 ```
 
@@ -232,7 +237,7 @@ Se receber erro de CORS:
 ### API Key não funciona
 - Verifique se a chave está ativa em https://alphavantage.co/
 - Aguarde alguns minutos para a ativação
-- Tente buscar uma ação diretamente: https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=NVDA&apikey=SEU_API_KEY
+- Tente buscar uma ação diretamente: https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=FTNT&apikey=SEU_API_KEY
 
 ### Sem dados de DY
 O Alpha Vantage não fornece DY diretamente. Para adicionar DY:

@@ -4,6 +4,6 @@
   "description": "Frontend para monitorar cotações de ações",
   "main": "index.html",
   "scripts": {
-    "start": "python -m http.server 3000"
+    "start": "npx --yes live-server . --host=0.0.0.0 --port=3000 --no-browser --watch=."
   }
 }

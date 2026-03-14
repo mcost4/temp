@@ -85,13 +85,17 @@ COMPANY_METADATA = {
     "NVDA": {"company_name": "NVIDIA", "dy": 0.03},
     "GE": {"company_name": "GE Aerospace", "dy": 0.37},
     "CVX": {"company_name": "Chevron", "dy": 4.12},
-    "X": {"company_name": "United States Steel", "dy": None},
     "CCJ": {"company_name": "Cameco", "dy": None},
     "SQM": {"company_name": "Sociedad Quimica y Minera", "dy": None},
     "PLTR": {"company_name": "Palantir", "dy": None},
     "MARA": {"company_name": "MARA Holdings", "dy": None},
     "LLY": {"company_name": "Eli Lilly", "dy": None},
     "WMT": {"company_name": "Walmart", "dy": None},
+    "FTNT": {"company_name": "Fortinet", "dy": None},
+    "PANW": {"company_name": "Palo Alto Networks", "dy": None},
+    "CRWD": {"company_name": "CrowdStrike", "dy": None},
+    "ZS": {"company_name": "Zscaler", "dy": None},
+    "CHKP": {"company_name": "Check Point Software", "dy": None},
 }
 
 
@@ -616,7 +620,16 @@ def get_mock_data(ticker: str, dy_source: str = "alpha_vantage") -> StockData:
     import random
     from datetime import datetime
     
-    mock_prices = {"NVDA": 875.50, "GE": 175.30, "CVX": 152.75}
+    mock_prices = {
+        "NVDA": 875.50,
+        "GE": 175.30,
+        "CVX": 152.75,
+        "FTNT": 83.40,
+        "PANW": 327.15,
+        "CRWD": 362.80,
+        "ZS": 212.35,
+        "CHKP": 176.90,
+    }
     price = mock_prices.get(ticker, 100.0)
     variation_percent = random.uniform(-5, 5)
     variation_abs = price * (variation_percent / 100)
