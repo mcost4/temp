@@ -585,8 +585,20 @@ body[data-theme='midnight'] .stock-logo {
     padding: 4px;
 }
 
+.stock-card[data-ticker='PANW'] .stock-logo {
+    background: #ffffff;
+    border-color: #d8e0ea;
+    padding: 2px;
+}
+
 body[data-theme='editorial'] .stock-card[data-ticker='GE'] .stock-logo,
 body[data-theme='midnight'] .stock-card[data-ticker='GE'] .stock-logo {
+    background: #ffffff;
+    border-color: #d8e0ea;
+}
+
+body[data-theme='editorial'] .stock-card[data-ticker='PANW'] .stock-logo,
+body[data-theme='midnight'] .stock-card[data-ticker='PANW'] .stock-logo {
     background: #ffffff;
     border-color: #d8e0ea;
 }

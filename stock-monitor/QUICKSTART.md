@@ -33,8 +33,7 @@ nano backend/.env
 # Ou apenas usar dados de exemplo (sem API key)
 ```
 
-Para configurar fonte de Dividend Yield (DY):
-```bash
+Para configurar fonte de Dividend Y```bash
 # backend/.env
 DY_DATA_SOURCE=alpha_vantage  # alpha_vantage | finnhub | yahoo_finance
 ```
@@ -65,8 +64,12 @@ npm start
 
 **Output esperado:**
 ```
-Serving "." at http://0.0.0.0:3000
+VITE vX.X.X ready in ...ms
+➜  Local:   http://localhost:3000/
 ```
+
+Se estiver em dev container/Codespaces e o browser não recarregar sozinho,
+reabra a aba do app após reiniciar o `npm start` para reconectar o canal HMR.
 
 ### 5. Acessar aplicativo
 - 🌐 **Frontend**: http://localhost:3000

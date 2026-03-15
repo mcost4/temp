@@ -94,6 +94,13 @@ npm start
 
 O frontend estará disponível em: http://localhost:3000
 
+Saída esperada do servidor local:
+
+```text
+VITE vX.X.X ready in ...ms
+➜  Local:   http://localhost:3000/
+```
+
 ## 🐳 Deploy com Docker
 
 ### Build das imagens

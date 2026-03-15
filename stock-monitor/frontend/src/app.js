@@ -413,6 +413,14 @@ function applyFlashClass(element, flashClass) {
 }
 
 function getCompanyLogoUrl(ticker) {
+    const logoOverrides = {
+        PANW: 'https://www.paloaltonetworks.com/etc/clientlibs/clean/imgs/pan-logo-dark.svg'
+    };
+
+    if (logoOverrides[ticker]) {
+        return logoOverrides[ticker];
+    }
+
     const logoMap = {
         NVDA: 'nvidia.com',
         GE: 'ge.com',

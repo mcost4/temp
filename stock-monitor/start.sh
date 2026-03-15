@@ -39,7 +39,7 @@ start_frontend() {
         return
     fi
 
-    nohup bash -lc "cd '$ROOT_DIR/frontend' && exec npx --yes live-server . --host=0.0.0.0 --port=3000 --no-browser --watch=." \
+    nohup bash -lc "cd '$ROOT_DIR/frontend' && exec npm start" \
         >"$FRONTEND_LOG" 2>&1 &
     echo $! > "$FRONTEND_PID_FILE"
     echo "Iniciando frontend... logs em $FRONTEND_LOG"
