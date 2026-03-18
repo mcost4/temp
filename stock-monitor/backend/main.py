@@ -8,7 +8,7 @@ from config import settings
 from typing import Any, List, Optional
 import logging
 import warnings
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from contextlib import asynccontextmanager
 
 try:
@@ -81,6 +81,29 @@ class DySourcesResponse(BaseModel):
     sources: List[DySourceOption]
 
 
+class AssetGridItem(BaseModel):
+    ticker: str
+    company_name: str
+    current_price: Optional[float] = None
+    dy: Optional[float] = None
+    day_change_pct: Optional[float] = None
+    month_change_pct: Optional[float] = None
+    ytd_change_pct: Optional[float] = None
+    trailing_12m_change_pct: Optional[float] = None
+    trailing_5y_change_pct: Optional[float] = None
+    trailing_5y_value_pct: Optional[float] = None
+    trailing_10y_change_pct: Optional[float] = None
+    trailing_10y_value_pct: Optional[float] = None
+    timestamp: str
+    source: str = "yahoo_finance"
+    status: str = "success"
+
+
+class AssetGridResponse(BaseModel):
+    items: List[AssetGridItem]
+    last_update: str
+
+
 COMPANY_METADATA = {
     "NVDA": {"company_name": "NVIDIA", "dy": 0.03},
     "GE": {"company_name": "GE Aerospace", "dy": 0.37},
@@ -103,12 +126,16 @@ COMPANY_METADATA = {
 stock_cache = {}
 last_cache_time = {}
 CACHE_DURATION = 10  # Cache curto para refletir melhor atualizações intraday
+asset_grid_cache = {}
+asset_grid_cache_time = {}
+ASSET_GRID_CACHE_DURATION = 20
 VALID_DY_SOURCES = {"alpha_vantage", "finnhub", "yahoo_finance"}
 DY_SOURCE_LABELS = {
     "alpha_vantage": "Alpha Vantage",
     "finnhub": "Finnhub",
     "yahoo_finance": "Yahoo Finance",
 }
+ASSET_GRID_DEFAULT_TICKERS = ["NVDA", "GE", "CVX", "CCJ", "SQM"]
 
 
 def get_company_metadata(ticker: str) -> dict:
@@ -327,6 +354,452 @@ async def fetch_prices_from_yahoo_batch(
         }
 
     return prices
+
+
+async def fetch_yahoo_quote_snapshot(
+    client: httpx.AsyncClient,
+    tickers: List[str],
+) -> dict:
+    symbols = ",".join(tickers)
+    if not symbols:
+        return {}
+
+    try:
+        response = await client.get(
+            "https://query1.finance.yahoo.com/v7/finance/quote",
+            params={"symbols": symbols},
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except Exception as e:
+        logger.warning(f"⚠️  quote snapshot Yahoo indisponível: {str(e)}")
+        return {}
+
+    results = payload.get("quoteResponse", {}).get("result") or []
+
+    quote_map = {}
+    for item in results:
+        ticker = str(item.get("symbol") or "").upper()
+        if not ticker:
+            continue
+
+        quote_map[ticker] = {
+            "current_price": item.get("regularMarketPrice"),
+            "previous_close": item.get("regularMarketPreviousClose"),
+            "market_time": item.get("regularMarketTime"),
+        }
+
+    return quote_map
+
+
+def _parse_yahoo_history_points(chart_payload: dict) -> List[tuple]:
+    result = chart_payload.get("chart", {}).get("result") or []
+    if not result:
+        return []
+
+    chart_result = result[0]
+    timestamps = chart_result.get("timestamp") or []
+    closes = (
+        chart_result.get("indicators", {})
+        .get("quote", [{}])[0]
+        .get("close", [])
+    )
+
+    points = []
+    for ts, close in zip(timestamps, closes):
+        if ts is None or close is None:
+            continue
+        try:
+            dt = datetime.fromtimestamp(int(ts), tz=timezone.utc)
+            price = float(close)
+        except (TypeError, ValueError, OSError):
+            continue
+
+        points.append((dt, price))
+
+    points.sort(key=lambda p: p[0])
+    return points
+
+
+async def fetch_yahoo_history_points(
+    client: httpx.AsyncClient,
+    ticker: str,
+    period_range: str = "10y",
+) -> List[tuple]:
+    response = await client.get(
+        f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}",
+        params={"range": period_range, "interval": "1d"},
+    )
+    response.raise_for_status()
+    payload = response.json()
+    return _parse_yahoo_history_points(payload)
+
+
+def _latest_point_before(points: List[tuple], target_dt: datetime) -> Optional[float]:
+    chosen = None
+    for dt, price in points:
+        if dt <= target_dt:
+            chosen = price
+        else:
+            break
+    return chosen
+
+
+def _calc_change_pct(current_price: Optional[float], base_price: Optional[float]) -> Optional[float]:
+    if current_price is None or base_price in (None, 0):
+        return None
+    return round(((float(current_price) - float(base_price)) / float(base_price)) * 100, 4)
+
+
+def _normalize_to_usdbrl(rate: Optional[float]) -> Optional[float]:
+    """Normaliza cotação do par BRL=X para o formato USD/BRL."""
+    if rate in (None, 0):
+        return None
+
+    try:
+        parsed = float(rate)
+    except (TypeError, ValueError):
+        return None
+
+    if parsed <= 0:
+        return None
+
+    # BRL=X em provedores pode vir como BRL por USD (~5) ou USD por BRL (~0.2).
+    # Mantemos sempre USD/BRL para o cálculo em reais.
+    if parsed < 1:
+        return 1.0 / parsed
+    return parsed
+
+
+def _normalize_points_to_usdbrl(points: List[tuple]) -> List[tuple]:
+    normalized = []
+    for dt, value in points:
+        normalized_value = _normalize_to_usdbrl(value)
+        if normalized_value is not None:
+            normalized.append((dt, normalized_value))
+    return normalized
+
+
+def _calc_brl_adjusted_return_pct(
+    current_usd_price: Optional[float],
+    base_usd_price: Optional[float],
+    current_usd_brl_rate: Optional[float],
+    base_usd_brl_rate: Optional[float],
+) -> Optional[float]:
+    """Retorno em BRL considerando ativo em USD e variação cambial USD/BRL."""
+    if current_usd_price in (None, 0) or base_usd_price in (None, 0):
+        return None
+    if current_usd_brl_rate in (None, 0) or base_usd_brl_rate in (None, 0):
+        return None
+
+    current_brl_price = float(current_usd_price) * float(current_usd_brl_rate)
+    base_brl_price = float(base_usd_price) * float(base_usd_brl_rate)
+
+    if base_brl_price == 0:
+        return None
+
+    return round(((current_brl_price - base_brl_price) / base_brl_price) * 100, 4)
+
+
+def _calculate_period_changes(
+    current_price: Optional[float],
+    previous_close: Optional[float],
+    history_points: List[tuple],
+) -> dict:
+    now = datetime.now(timezone.utc)
+    month_start = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
+    year_start = datetime(now.year, 1, 1, tzinfo=timezone.utc)
+    trailing_12m_start = now - timedelta(days=365)
+    trailing_5y_start = now - timedelta(days=365 * 5)
+    trailing_10y_start = now - timedelta(days=365 * 10)
+
+    month_base = _latest_point_before(history_points, month_start)
+    ytd_base = _latest_point_before(history_points, year_start)
+    trailing_12m_base = _latest_point_before(history_points, trailing_12m_start)
+    trailing_5y_base = _latest_point_before(history_points, trailing_5y_start)
+    trailing_10y_base = _latest_point_before(history_points, trailing_10y_start)
+
+    return {
+        "day_change_pct": _calc_change_pct(current_price, previous_close),
+        "month_change_pct": _calc_change_pct(current_price, month_base),
+        "ytd_change_pct": _calc_change_pct(current_price, ytd_base),
+        "trailing_12m_change_pct": _calc_change_pct(current_price, trailing_12m_base),
+        "trailing_5y_change_pct": _calc_change_pct(current_price, trailing_5y_base),
+        "trailing_10y_change_pct": _calc_change_pct(current_price, trailing_10y_base),
+    }
+
+
+def _build_asset_grid_item(
+    ticker: str,
+    quote_snapshot: Optional[dict],
+    history_points: List[tuple],
+    dy: Optional[float],
+    usd_brl_current_rate: Optional[float],
+    usd_brl_5y_base_rate: Optional[float],
+    usd_brl_10y_base_rate: Optional[float],
+) -> AssetGridItem:
+    now = datetime.now(timezone.utc)
+
+    current_price = None
+    previous_close = None
+    market_time = None
+    if quote_snapshot:
+        try:
+            if quote_snapshot.get("current_price") is not None:
+                current_price = float(quote_snapshot.get("current_price"))
+            if quote_snapshot.get("previous_close") is not None:
+                previous_close = float(quote_snapshot.get("previous_close"))
+            market_time = quote_snapshot.get("market_time")
+        except (TypeError, ValueError):
+            current_price = None
+            previous_close = None
+
+    if current_price is None and history_points:
+        current_price = history_points[-1][1]
+
+    changes = _calculate_period_changes(current_price, previous_close, history_points)
+
+    trailing_5y_start = now - timedelta(days=365 * 5)
+    trailing_5y_base = _latest_point_before(history_points, trailing_5y_start)
+    trailing_5y_value_pct = _calc_brl_adjusted_return_pct(
+        current_usd_price=current_price,
+        base_usd_price=trailing_5y_base,
+        current_usd_brl_rate=usd_brl_current_rate,
+        base_usd_brl_rate=usd_brl_5y_base_rate,
+    )
+
+    trailing_10y_start = now - timedelta(days=365 * 10)
+    trailing_10y_base = _latest_point_before(history_points, trailing_10y_start)
+    trailing_10y_value_pct = _calc_brl_adjusted_return_pct(
+        current_usd_price=current_price,
+        base_usd_price=trailing_10y_base,
+        current_usd_brl_rate=usd_brl_current_rate,
+        base_usd_brl_rate=usd_brl_10y_base_rate,
+    )
+
+    timestamp = now.isoformat()
+    if market_time:
+        try:
+            timestamp = datetime.fromtimestamp(int(market_time), tz=timezone.utc).isoformat()
+        except (TypeError, ValueError, OSError):
+            pass
+
+    has_data = current_price is not None
+    return AssetGridItem(
+        ticker=ticker,
+        company_name=get_company_metadata(ticker)["company_name"],
+        current_price=current_price,
+        dy=dy,
+        day_change_pct=changes["day_change_pct"],
+        month_change_pct=changes["month_change_pct"],
+        ytd_change_pct=changes["ytd_change_pct"],
+        trailing_12m_change_pct=changes["trailing_12m_change_pct"],
+        trailing_5y_change_pct=changes["trailing_5y_change_pct"],
+        trailing_5y_value_pct=trailing_5y_value_pct,
+        trailing_10y_change_pct=changes["trailing_10y_change_pct"],
+        trailing_10y_value_pct=trailing_10y_value_pct,
+        timestamp=timestamp,
+        source="yahoo_finance",
+        status="success" if has_data else "fallback",
+    )
+
+
+async def fetch_asset_grid_item_from_yfinance(
+    ticker: str,
+    dy: Optional[float],
+    usd_brl_current_rate: Optional[float],
+    usd_brl_5y_base_rate: Optional[float],
+    usd_brl_10y_base_rate: Optional[float],
+) -> Optional[AssetGridItem]:
+    if yf is None:
+        return None
+
+    def _build_with_yfinance() -> Optional[AssetGridItem]:
+        ticker_data = yf.Ticker(ticker)
+        fast_info = getattr(ticker_data, "fast_info", None) or {}
+
+        current_price = fast_info.get("lastPrice")
+        previous_close = fast_info.get("previousClose")
+
+        history = ticker_data.history(period="10y", interval="1d")
+        if history is None or history.empty:
+            return None
+
+        points = []
+        for index_value, row in history.iterrows():
+            close_value = row.get("Close")
+            if close_value is None:
+                continue
+
+            try:
+                dt = index_value.to_pydatetime()
+            except Exception:
+                continue
+
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            else:
+                dt = dt.astimezone(timezone.utc)
+
+            try:
+                points.append((dt, float(close_value)))
+            except (TypeError, ValueError):
+                continue
+
+        if not points:
+            return None
+
+        points.sort(key=lambda p: p[0])
+
+        if current_price is None:
+            current_price = points[-1][1]
+        if previous_close is None and len(points) >= 2:
+            previous_close = points[-2][1]
+
+        changes = _calculate_period_changes(current_price, previous_close, points)
+        trailing_5y_start = datetime.now(timezone.utc) - timedelta(days=365 * 5)
+        trailing_5y_base = _latest_point_before(points, trailing_5y_start)
+        trailing_5y_value_pct = _calc_brl_adjusted_return_pct(
+            current_usd_price=current_price,
+            base_usd_price=trailing_5y_base,
+            current_usd_brl_rate=usd_brl_current_rate,
+            base_usd_brl_rate=usd_brl_5y_base_rate,
+        )
+        trailing_10y_start = datetime.now(timezone.utc) - timedelta(days=365 * 10)
+        trailing_10y_base = _latest_point_before(points, trailing_10y_start)
+        trailing_10y_value_pct = _calc_brl_adjusted_return_pct(
+            current_usd_price=current_price,
+            base_usd_price=trailing_10y_base,
+            current_usd_brl_rate=usd_brl_current_rate,
+            base_usd_brl_rate=usd_brl_10y_base_rate,
+        )
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        return AssetGridItem(
+            ticker=ticker,
+            company_name=get_company_metadata(ticker)["company_name"],
+            current_price=float(current_price) if current_price is not None else None,
+            dy=dy,
+            day_change_pct=changes["day_change_pct"],
+            month_change_pct=changes["month_change_pct"],
+            ytd_change_pct=changes["ytd_change_pct"],
+            trailing_12m_change_pct=changes["trailing_12m_change_pct"],
+            trailing_5y_change_pct=changes["trailing_5y_change_pct"],
+            trailing_5y_value_pct=trailing_5y_value_pct,
+            trailing_10y_change_pct=changes["trailing_10y_change_pct"],
+            trailing_10y_value_pct=trailing_10y_value_pct,
+            timestamp=now_iso,
+            source="yahoo_finance",
+            status="success" if current_price is not None else "fallback",
+        )
+
+    try:
+        return await asyncio.to_thread(_build_with_yfinance)
+    except Exception as e:
+        logger.warning(f"⚠️  {ticker}: fallback grade yfinance falhou - {str(e)}")
+        return None
+
+
+def _parse_asset_grid_tickers(tickers: Optional[str]) -> List[str]:
+    if not tickers:
+        return ASSET_GRID_DEFAULT_TICKERS
+
+    parsed = [token.strip().upper() for token in tickers.split(",") if token.strip()]
+    return parsed or ASSET_GRID_DEFAULT_TICKERS
+
+
+async def fetch_usd_brl_5y_context(
+    client: httpx.AsyncClient,
+) -> tuple[Optional[float], Optional[float], Optional[float]]:
+    now = datetime.now(timezone.utc)
+    target_5y = now - timedelta(days=365 * 5)
+    target_10y = now - timedelta(days=365 * 10)
+
+    current_rate = None
+    base_5y_rate = None
+    base_10y_rate = None
+
+    try:
+        quote_map = await fetch_yahoo_quote_snapshot(client, ["BRL=X"])
+        if quote_map.get("BRL=X", {}).get("current_price") is not None:
+            current_rate = _normalize_to_usdbrl(quote_map["BRL=X"]["current_price"])
+    except Exception as e:
+        logger.warning(f"⚠️  USD/BRL via Yahoo HTTP indisponível: {str(e)}")
+
+    try:
+        fx_points = await fetch_yahoo_history_points(client, "BRL=X", period_range="10y")
+        fx_points = _normalize_points_to_usdbrl(fx_points)
+        if fx_points:
+            base_5y_rate = _latest_point_before(fx_points, target_5y)
+            if base_5y_rate is None:
+                base_5y_rate = fx_points[0][1]
+            base_10y_rate = _latest_point_before(fx_points, target_10y)
+            if base_10y_rate is None:
+                base_10y_rate = fx_points[0][1]
+    except Exception as e:
+        logger.warning(f"⚠️  histórico USD/BRL via Yahoo HTTP indisponível: {str(e)}")
+
+    if yf is None:
+        return current_rate, base_5y_rate, base_10y_rate
+
+    def _get_rate_from_yf() -> tuple[Optional[float], Optional[float], Optional[float]]:
+        ticker_data = yf.Ticker("BRL=X")
+        fast_info = getattr(ticker_data, "fast_info", None) or {}
+        local_current_rate = fast_info.get("lastPrice") or fast_info.get("regularMarketPrice")
+        if local_current_rate is None:
+            info = ticker_data.info or {}
+            local_current_rate = info.get("currentPrice") or info.get("regularMarketPrice")
+
+        local_base_5y_rate = None
+        local_base_10y_rate = None
+        history = ticker_data.history(period="10y", interval="1d")
+        if history is not None and not history.empty:
+            points = []
+            for index_value, row in history.iterrows():
+                close_value = row.get("Close")
+                if close_value is None:
+                    continue
+
+                try:
+                    dt = index_value.to_pydatetime()
+                except Exception:
+                    continue
+
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                else:
+                    dt = dt.astimezone(timezone.utc)
+
+                try:
+                    points.append((dt, float(close_value)))
+                except (TypeError, ValueError):
+                    continue
+
+            points.sort(key=lambda p: p[0])
+            points = _normalize_points_to_usdbrl(points)
+            if points:
+                local_base_5y_rate = _latest_point_before(points, target_5y)
+                if local_base_5y_rate is None:
+                    local_base_5y_rate = points[0][1]
+                local_base_10y_rate = _latest_point_before(points, target_10y)
+                if local_base_10y_rate is None:
+                    local_base_10y_rate = points[0][1]
+
+        parsed_current = _normalize_to_usdbrl(local_current_rate)
+        return parsed_current, local_base_5y_rate, local_base_10y_rate
+
+    try:
+        yf_current, yf_base_5y, yf_base_10y = await asyncio.to_thread(_get_rate_from_yf)
+        if current_rate is None:
+            current_rate = yf_current
+        if base_5y_rate is None:
+            base_5y_rate = yf_base_5y
+        if base_10y_rate is None:
+            base_10y_rate = yf_base_10y
+    except Exception as e:
+        logger.warning(f"⚠️  USD/BRL via yfinance indisponível: {str(e)}")
+
+    return current_rate, base_5y_rate, base_10y_rate
 
 
 async def fetch_price_from_yahoo_http(
@@ -712,6 +1185,87 @@ async def get_dy_sources():
         default_source=normalize_dy_source(None),
         sources=sources,
     )
+
+
+@app.get("/api/asset-grid", response_model=AssetGridResponse)
+async def get_asset_grid(tickers: Optional[str] = Query(default=None)):
+    """Retorna grade de variações por período com base no Yahoo Finance."""
+    selected_tickers = _parse_asset_grid_tickers(tickers)
+    now = datetime.now(timezone.utc).isoformat()
+    cache_key = ",".join(selected_tickers)
+    current_time = time.time()
+
+    if cache_key in asset_grid_cache and cache_key in asset_grid_cache_time:
+        age = current_time - asset_grid_cache_time[cache_key]
+        if age < ASSET_GRID_CACHE_DURATION:
+            return asset_grid_cache[cache_key]
+
+    try:
+        async with httpx.AsyncClient(timeout=12) as client:
+            quote_snapshot = await fetch_yahoo_quote_snapshot(client, selected_tickers)
+            usd_brl_current_rate, usd_brl_5y_base_rate, usd_brl_10y_base_rate = await fetch_usd_brl_5y_context(client)
+
+            history_tasks = [fetch_yahoo_history_points(client, ticker, period_range="10y") for ticker in selected_tickers]
+            dy_tasks = [fetch_dividend_yield(client, ticker, "yahoo_finance") for ticker in selected_tickers]
+            history_results = await asyncio.gather(*history_tasks, return_exceptions=True)
+            dy_results = await asyncio.gather(*dy_tasks, return_exceptions=True)
+
+            items = []
+            for idx, (ticker, history_result) in enumerate(zip(selected_tickers, history_results)):
+                if isinstance(history_result, Exception):
+                    logger.warning(f"⚠️  {ticker}: histórico Yahoo indisponível - {str(history_result)}")
+                    history_points = []
+                else:
+                    history_points = history_result
+
+                dy_value = None
+                dy_result = dy_results[idx]
+                if not isinstance(dy_result, Exception):
+                    dy_value = dy_result
+
+                item = _build_asset_grid_item(
+                    ticker=ticker,
+                    quote_snapshot=quote_snapshot.get(ticker),
+                    history_points=history_points,
+                    dy=dy_value,
+                    usd_brl_current_rate=usd_brl_current_rate,
+                    usd_brl_5y_base_rate=usd_brl_5y_base_rate,
+                    usd_brl_10y_base_rate=usd_brl_10y_base_rate,
+                )
+
+                if item.current_price is None:
+                    fallback_item = await fetch_asset_grid_item_from_yfinance(
+                        ticker=ticker,
+                        dy=dy_value,
+                        usd_brl_current_rate=usd_brl_current_rate,
+                        usd_brl_5y_base_rate=usd_brl_5y_base_rate,
+                        usd_brl_10y_base_rate=usd_brl_10y_base_rate,
+                    )
+                    if fallback_item is not None:
+                        item = fallback_item
+
+                items.append(item)
+
+            response = AssetGridResponse(items=items, last_update=now)
+            asset_grid_cache[cache_key] = response
+            asset_grid_cache_time[cache_key] = current_time
+            return response
+    except Exception as e:
+        logger.error(f"❌ Erro ao montar grade de ativos: {str(e)}")
+        fallback_items = [
+            AssetGridItem(
+                ticker=ticker,
+                company_name=get_company_metadata(ticker)["company_name"],
+                timestamp=now,
+                source="yahoo_finance",
+                status="fallback",
+            )
+            for ticker in selected_tickers
+        ]
+        response = AssetGridResponse(items=fallback_items, last_update=now)
+        asset_grid_cache[cache_key] = response
+        asset_grid_cache_time[cache_key] = current_time
+        return response
 
 
 @app.get("/health")

@@ -134,7 +134,7 @@ body[data-theme='midnight'] .subtitle {
     border-bottom: 1px solid var(--border-color);
     display: flex;
     gap: 10px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     justify-content: center;
     align-items: center;
 }
@@ -198,13 +198,17 @@ body[data-theme='midnight'] .source-select:focus {
 }
 
 .source-select {
-    min-width: 240px;
+    min-width: 210px;
     padding: 12px 16px;
     border: 1px solid #2f4166;
     border-radius: 8px;
     font-size: 0.95rem;
     background: #0d172b;
     color: #e6f0ff;
+}
+
+.api-config .btn-refresh {
+    white-space: nowrap;
 }
 
 .source-select:focus {
@@ -395,23 +399,23 @@ body[data-theme='midnight'] .status-legend {
 .clock-item {
     font-size: 0.85rem;
     font-weight: 700;
-    color: #04111d;
-    background: linear-gradient(135deg, #00eaff, #ffe600);
-    border: 1px solid rgba(255, 255, 255, 0.35);
+    color: #ffffff;
+    background: #0f1b2e;
+    border: 1px solid #2f4166;
     border-radius: 999px;
     padding: 5px 12px;
 }
 
 body[data-theme='editorial'] .clock-item {
-    color: #2f1a08;
-    background: linear-gradient(135deg, #ffe3a3, #ffbf7a);
-    border-color: rgba(133, 87, 28, 0.28);
+    color: #ffffff;
+    background: #7a4c1f;
+    border-color: #9d6831;
 }
 
 body[data-theme='midnight'] .clock-item {
-    color: #031109;
-    background: linear-gradient(135deg, #00ffa3, #ffb347);
-    border-color: rgba(255, 255, 255, 0.18);
+    color: #ffffff;
+    background: #111111;
+    border-color: #2b2b2b;
 }
 
 .status-mock {
@@ -446,6 +450,149 @@ body[data-theme='midnight'] .status-mock {
     gap: 14px;
     padding: 22px 16px;
     background: linear-gradient(180deg, #080f1b 0%, #060b13 100%);
+}
+
+.asset-grid-section {
+    padding: 22px 16px 8px;
+    border-top: 1px solid var(--border-color);
+    background: linear-gradient(180deg, #070d17 0%, #08101d 100%);
+}
+
+body[data-theme='editorial'] .asset-grid-section {
+    background: linear-gradient(180deg, #f8f1e2 0%, #f3ead9 100%);
+    border-top-color: #ddc8a9;
+}
+
+body[data-theme='midnight'] .asset-grid-section {
+    background: linear-gradient(180deg, #060606 0%, #020202 100%);
+    border-top-color: #242424;
+}
+
+.asset-grid-header {
+    margin-bottom: 12px;
+}
+
+.asset-grid-header h2 {
+    font-family: 'Barlow Condensed', 'Space Grotesk', sans-serif;
+    font-size: 1.5rem;
+    letter-spacing: 0.02em;
+    margin-bottom: 3px;
+}
+
+.asset-grid-header p {
+    color: #9fb3d8;
+    font-size: 0.9rem;
+}
+
+body[data-theme='editorial'] .asset-grid-header p {
+    color: #6b5339;
+}
+
+body[data-theme='midnight'] .asset-grid-header p {
+    color: #a7b2c0;
+}
+
+.asset-grid-container {
+    overflow-x: auto;
+    border: 1px solid #24324f;
+    border-radius: 10px;
+}
+
+body[data-theme='editorial'] .asset-grid-container {
+    border-color: #d9c29c;
+}
+
+body[data-theme='midnight'] .asset-grid-container {
+    border-color: #2b2b2b;
+}
+
+.asset-grid-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 820px;
+    font-size: 0.9rem;
+}
+
+.asset-grid-table thead {
+    background: #111d31;
+}
+
+body[data-theme='editorial'] .asset-grid-table thead {
+    background: #e8d6ba;
+}
+
+body[data-theme='midnight'] .asset-grid-table thead {
+    background: #111111;
+}
+
+.asset-grid-table th,
+.asset-grid-table td {
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid #24324f;
+    white-space: nowrap;
+}
+
+.asset-grid-sort-btn {
+    width: 100%;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: 700;
+    text-align: left;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.asset-grid-sort-btn span {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    min-width: 1em;
+    text-align: center;
+}
+
+.asset-grid-sort-btn:hover {
+    text-decoration: underline;
+}
+
+body[data-theme='editorial'] .asset-grid-table th,
+body[data-theme='editorial'] .asset-grid-table td {
+    border-bottom-color: #ddc8a8;
+}
+
+body[data-theme='midnight'] .asset-grid-table th,
+body[data-theme='midnight'] .asset-grid-table td {
+    border-bottom-color: #242424;
+}
+
+.asset-grid-table tbody tr:nth-child(even) {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+body[data-theme='editorial'] .asset-grid-table tbody tr:nth-child(even) {
+    background: rgba(120, 86, 36, 0.06);
+}
+
+body[data-theme='midnight'] .asset-grid-table tbody tr:nth-child(even) {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.grid-change.positive {
+    color: var(--success-color);
+    font-weight: 700;
+}
+
+.grid-change.negative {
+    color: var(--danger-color);
+    font-weight: 700;
+}
+
+.grid-change.neutral {
+    color: var(--neutral-color);
 }
 
 body[data-theme='editorial'] .stocks-grid {
@@ -669,53 +816,6 @@ body[data-theme='midnight'] .stock-source-update {
     font-size: 1.3rem;
 }
 
-.stock-dy {
-    background: #0b2236;
-    padding: 12px;
-    border-radius: 8px;
-    margin-bottom: 10px;
-    border-left: 3px solid var(--primary-color);
-}
-
-body[data-theme='editorial'] .stock-dy {
-    background: #fff4dd;
-    border-left-color: #d98c2f;
-}
-
-body[data-theme='midnight'] .stock-dy {
-    background: #071711;
-    border-left-color: #00ffa3;
-}
-
-.stock-dy label {
-    display: block;
-    font-size: 0.85rem;
-    color: #9bb7dc;
-    margin-bottom: 3px;
-}
-
-body[data-theme='editorial'] .stock-dy label {
-    color: #755b3e;
-}
-
-body[data-theme='midnight'] .stock-dy label {
-    color: #8fa49b;
-}
-
-.stock-dy .value {
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: #7feeff;
-}
-
-body[data-theme='editorial'] .stock-dy .value {
-    color: #8d4e08;
-}
-
-body[data-theme='midnight'] .stock-dy .value {
-    color: #73ffc1;
-}
-
 .stock-status-row {
     display: flex;
     gap: 8px;
@@ -913,12 +1013,15 @@ body[data-theme='midnight'] .footer {
         grid-template-columns: 1fr;
     }
 
-    .api-config,
-    .controls {
-        flex-direction: column;
+    .api-config {
+        flex-wrap: wrap;
     }
 
     .api-input {
         min-width: unset;
+    }
+
+    .asset-grid-table {
+        font-size: 0.82rem;
     }
 }

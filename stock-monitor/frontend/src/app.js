@@ -15,6 +15,10 @@ const DY_SOURCE_KEY = 'dySource';
 const THEME_STORAGE_KEY = 'themeMode';
 const DEFAULT_DY_SOURCE = 'yahoo_finance';
 const DEFAULT_THEME = 'neon';
+const ASSET_GRID_INITIAL_TICKERS = ['NVDA', 'GE', 'CVX', 'CCJ', 'SQM'];
+const ASSET_GRID_SORT_DEFAULT = { key: 'company_name', direction: 'asc' };
+let assetGridSort = { ...ASSET_GRID_SORT_DEFAULT };
+let latestAssetGridPayload = null;
 const LOCAL_DY_SOURCE_LABELS = {
     alpha_vantage: 'Alpha Vantage',
     finnhub: 'Finnhub',
@@ -36,11 +40,6 @@ const STATUS_LABELS = {
 
 // Carregar API Key do localStorage
 window.addEventListener('DOMContentLoaded', async () => {
-    const savedApiKey = localStorage.getItem('apiKey');
-    if (savedApiKey) {
-        document.getElementById('apiKey').value = savedApiKey;
-    }
-
     await loadDySources();
 
     const savedDySource = localStorage.getItem(DY_SOURCE_KEY);
@@ -54,11 +53,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
     applyTheme(normalizeTheme(savedTheme));
 
-    const autoRefreshCheckbox = document.getElementById('autoRefresh');
-    setAutoRefreshVisualState(Boolean(autoRefreshCheckbox && autoRefreshCheckbox.checked));
-    if (autoRefreshCheckbox && autoRefreshCheckbox.checked) {
-        toggleAutoRefresh(false);
-    }
+    setAutoRefreshVisualState(true);
+    startAutoRefresh();
 
     startClocks();
     refreshData();
@@ -178,45 +174,14 @@ function updateFooterDataSource(sourceLabel) {
     footerEl.textContent = `Dados fornecidos por APIs de mercado | DY: ${sourceLabel}`;
 }
 
-// Salvar API Key
-function saveApiKey() {
-    const apiKey = document.getElementById('apiKey').value.trim();
-    if (apiKey) {
-        localStorage.setItem('apiKey', apiKey);
-        alert('✅ API Key salva com sucesso!');
-        refreshData();
-    } else {
-        localStorage.removeItem('apiKey');
-        alert('API Key removida. Usando dados de exemplo.');
-        refreshData();
+// Auto-atualização sempre ativa
+function startAutoRefresh() {
+    if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
     }
-}
-
-// Alternar auto-atualização
-function toggleAutoRefresh(showAlert = true) {
-    const isChecked = document.getElementById('autoRefresh').checked;
-    setAutoRefreshVisualState(isChecked);
-    
-    if (isChecked) {
-        autoRefreshDelayMs = AUTO_REFRESH_BASE_MS;
-        if (autoRefreshInterval) {
-            clearInterval(autoRefreshInterval);
-        }
-        autoRefreshInterval = setInterval(() => {
-            refreshData();
-        }, autoRefreshDelayMs);
-        if (showAlert) {
-            alert('Auto-atualização ativada (5s, com proteção de rate limit)');
-        }
-    } else {
-        if (autoRefreshInterval) {
-            clearInterval(autoRefreshInterval);
-            autoRefreshInterval = null;
-        }
-        if (showAlert) {
-            alert('Auto-atualização desativada');
-        }
-    }
+    autoRefreshInterval = setInterval(() => {
+        refreshData();
+    }, autoRefreshDelayMs);
 }
 
 // Função principal de atualização
@@ -227,7 +192,6 @@ async function refreshData() {
 
     isRefreshing = true;
     const container = document.getElementById('stocksContainer');
-    const statusDiv = document.getElementById('dataStatus');
     const selectedDySource = getSelectedDySource();
     const selectedDySourceLabel = dySourceLabels[selectedDySource] || dySourceLabels[DEFAULT_DY_SOURCE];
     updateFooterDataSource(selectedDySourceLabel);
@@ -239,42 +203,37 @@ async function refreshData() {
         
         // Tentar conectar ao servidor, se falhar usar URL alternativa ou dados de exemplo
         let data;
+        let assetGridData;
         try {
             const response = await fetch(`${API_BASE_URL}/stocks?dy_source=${encodeURIComponent(selectedDySource)}`);
             if (!response.ok) throw new Error('Erro na API');
             data = await response.json();
+
+            const assetGridResponse = await fetch(
+                `${API_BASE_URL}/asset-grid?tickers=${encodeURIComponent(ASSET_GRID_INITIAL_TICKERS.join(','))}`
+            );
+            if (!assetGridResponse.ok) throw new Error('Erro na API da grade de ativos');
+            assetGridData = await assetGridResponse.json();
+
             const responseDySource = normalizeDySource(data.dy_source || selectedDySource);
             const responseDySourceLabel = dySourceLabels[responseDySource] || selectedDySourceLabel;
-            const runtimeStatus = summarizeStatuses(data.stocks);
-            const priceSourceSummary = summarizePriceSources(data.stocks);
-            statusDiv.textContent = `${runtimeStatus} (Fonte DY: ${responseDySourceLabel} | Fontes preço: ${priceSourceSummary})`;
-            statusDiv.className = hasAnyFallback(data.stocks) ? 'status-mock' : 'status-real';
             updateFooterDataSource(responseDySourceLabel);
             autoRefreshDelayMs = AUTO_REFRESH_BASE_MS;
-            if (document.getElementById('autoRefresh').checked && autoRefreshInterval) {
-                clearInterval(autoRefreshInterval);
-                autoRefreshInterval = setInterval(() => {
-                    refreshData();
-                }, autoRefreshDelayMs);
-            }
+            startAutoRefresh();
         } catch (apiError) {
             console.warn('API não disponível, usando dados de exemplo:', apiError);
             data = getMockData();
-            statusDiv.textContent = `⚠️ Usando dados de exemplo (DY: ${selectedDySourceLabel})`;
-            statusDiv.className = 'status-mock';
+            assetGridData = getMockAssetGridData();
             updateFooterDataSource(selectedDySourceLabel);
 
             autoRefreshDelayMs = Math.min(autoRefreshDelayMs * 2, AUTO_REFRESH_MAX_MS);
-            if (document.getElementById('autoRefresh').checked && autoRefreshInterval) {
-                clearInterval(autoRefreshInterval);
-                autoRefreshInterval = setInterval(() => {
-                    refreshData();
-                }, autoRefreshDelayMs);
-            }
+            startAutoRefresh();
         }
         
         renderStocks(data.stocks);
         updateLastUpdate(data.last_update);
+        latestAssetGridPayload = assetGridData;
+        renderAssetGrid(assetGridData);
         
     } catch (error) {
         console.error('Erro ao carregar dados:', error);
@@ -288,6 +247,144 @@ async function refreshData() {
     } finally {
         isRefreshing = false;
     }
+}
+
+function formatGridPercent(value) {
+    if (value === null || value === undefined || Number.isNaN(Number(value))) {
+        return 'N/D';
+    }
+
+    const numeric = Number(value);
+    const sign = numeric > 0 ? '+' : '';
+    return `${sign}${numeric.toFixed(2)}%`;
+}
+
+function formatGridDy(value) {
+    if (value === null || value === undefined || Number.isNaN(Number(value))) {
+        return 'N/D';
+    }
+
+    return `${Number(value).toFixed(2)}%`;
+}
+
+function setAssetGridSort(key) {
+    if (assetGridSort.key === key) {
+        assetGridSort.direction = assetGridSort.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+        assetGridSort = { key, direction: 'asc' };
+    }
+
+    if (latestAssetGridPayload) {
+        renderAssetGrid(latestAssetGridPayload);
+    }
+}
+
+function getAssetGridSortIndicator(key) {
+    if (assetGridSort.key !== key) {
+        return '↕';
+    }
+    return assetGridSort.direction === 'asc' ? '↑' : '↓';
+}
+
+function getAssetGridSortValue(item, key) {
+    if (key === 'company_name') {
+        return `${item.company_name || ''} (${item.ticker || ''})`.toLowerCase();
+    }
+    return item[key];
+}
+
+function sortAssetGridItems(items) {
+    const sorted = [...items];
+    const { key, direction } = assetGridSort;
+
+    sorted.sort((a, b) => {
+        const va = getAssetGridSortValue(a, key);
+        const vb = getAssetGridSortValue(b, key);
+
+        const aMissing = va === null || va === undefined || va === '' || Number.isNaN(Number(va));
+        const bMissing = vb === null || vb === undefined || vb === '' || Number.isNaN(Number(vb));
+
+        if (aMissing && bMissing) return 0;
+        if (aMissing) return 1;
+        if (bMissing) return -1;
+
+        let comparison = 0;
+        if (typeof va === 'string' || typeof vb === 'string') {
+            comparison = String(va).localeCompare(String(vb), 'pt-BR');
+        } else {
+            comparison = Number(va) - Number(vb);
+        }
+
+        return direction === 'asc' ? comparison : -comparison;
+    });
+
+    return sorted;
+}
+
+function getGridTrendClass(value) {
+    if (value === null || value === undefined || Number.isNaN(Number(value))) {
+        return 'neutral';
+    }
+
+    return Number(value) >= 0 ? 'positive' : 'negative';
+}
+
+function renderAssetGrid(payload) {
+    const container = document.getElementById('assetGridContainer');
+    if (!container) return;
+
+    const items = Array.isArray(payload?.items) ? payload.items : [];
+    if (!items.length) {
+        container.innerHTML = '<div class="error">Nenhum dado disponível para a Grade de Ativos.</div>';
+        return;
+    }
+
+    const sortedItems = sortAssetGridItems(items);
+
+    const rowsHtml = sortedItems.map((item) => {
+        const currentPrice = item.current_price === null || item.current_price === undefined
+            ? 'N/D'
+            : `$${Number(item.current_price).toFixed(2)}`;
+
+        return `
+            <tr>
+                <td>${item.company_name || item.ticker} (${item.ticker})</td>
+                <td>${currentPrice}</td>
+                <td class="grid-change ${getGridTrendClass(item.dy)}">${formatGridDy(item.dy)}</td>
+                <td class="grid-change ${getGridTrendClass(item.day_change_pct)}">${formatGridPercent(item.day_change_pct)}</td>
+                <td class="grid-change ${getGridTrendClass(item.month_change_pct)}">${formatGridPercent(item.month_change_pct)}</td>
+                <td class="grid-change ${getGridTrendClass(item.ytd_change_pct)}">${formatGridPercent(item.ytd_change_pct)}</td>
+                <td class="grid-change ${getGridTrendClass(item.trailing_12m_change_pct)}">${formatGridPercent(item.trailing_12m_change_pct)}</td>
+                <td class="grid-change ${getGridTrendClass(item.trailing_5y_change_pct)}">${formatGridPercent(item.trailing_5y_change_pct)}</td>
+                <td class="grid-change ${getGridTrendClass(item.trailing_5y_value_pct)}">${formatGridPercent(item.trailing_5y_value_pct)}</td>
+                <td class="grid-change ${getGridTrendClass(item.trailing_10y_change_pct)}">${formatGridPercent(item.trailing_10y_change_pct)}</td>
+                <td class="grid-change ${getGridTrendClass(item.trailing_10y_value_pct)}">${formatGridPercent(item.trailing_10y_value_pct)}</td>
+            </tr>
+        `;
+    }).join('');
+
+    container.innerHTML = `
+        <table class="asset-grid-table" aria-label="Grade de ativos">
+            <thead>
+                <tr>
+                    <th><button type="button" class="asset-grid-sort-btn" onclick="setAssetGridSort('company_name')">Ativo <span>${getAssetGridSortIndicator('company_name')}</span></button></th>
+                    <th><button type="button" class="asset-grid-sort-btn" onclick="setAssetGridSort('current_price')">Preço <span>${getAssetGridSortIndicator('current_price')}</span></button></th>
+                    <th><button type="button" class="asset-grid-sort-btn" onclick="setAssetGridSort('dy')">DY <span>${getAssetGridSortIndicator('dy')}</span></button></th>
+                    <th><button type="button" class="asset-grid-sort-btn" onclick="setAssetGridSort('day_change_pct')">Dia <span>${getAssetGridSortIndicator('day_change_pct')}</span></button></th>
+                    <th><button type="button" class="asset-grid-sort-btn" onclick="setAssetGridSort('month_change_pct')">Mês <span>${getAssetGridSortIndicator('month_change_pct')}</span></button></th>
+                    <th><button type="button" class="asset-grid-sort-btn" onclick="setAssetGridSort('ytd_change_pct')">Ano Atual <span>${getAssetGridSortIndicator('ytd_change_pct')}</span></button></th>
+                    <th><button type="button" class="asset-grid-sort-btn" onclick="setAssetGridSort('trailing_12m_change_pct')">Últimos 12 Meses <span>${getAssetGridSortIndicator('trailing_12m_change_pct')}</span></button></th>
+                    <th><button type="button" class="asset-grid-sort-btn" onclick="setAssetGridSort('trailing_5y_change_pct')">Rendimento dos últimos 5 anos USD <span>${getAssetGridSortIndicator('trailing_5y_change_pct')}</span></button></th>
+                    <th><button type="button" class="asset-grid-sort-btn" onclick="setAssetGridSort('trailing_5y_value_pct')">Rendimento dos últimos 5 anos BRL <span>${getAssetGridSortIndicator('trailing_5y_value_pct')}</span></button></th>
+                    <th><button type="button" class="asset-grid-sort-btn" onclick="setAssetGridSort('trailing_10y_change_pct')">Rendimento dos últimos 10 anos USD <span>${getAssetGridSortIndicator('trailing_10y_change_pct')}</span></button></th>
+                    <th><button type="button" class="asset-grid-sort-btn" onclick="setAssetGridSort('trailing_10y_value_pct')">Rendimento dos últimos 10 anos BRL <span>${getAssetGridSortIndicator('trailing_10y_value_pct')}</span></button></th>
+                </tr>
+            </thead>
+            <tbody>
+                ${rowsHtml}
+            </tbody>
+        </table>
+    `;
 }
 
 // Renderizar cards de ações
@@ -338,25 +435,6 @@ function updateStockCards(container, stocks) {
         const variationWrapEl = card.querySelector('[data-role="variation-wrap"]');
         const variationIconEl = card.querySelector('[data-role="variation-icon"]');
         const variationValueEl = card.querySelector('[data-role="variation-value"]');
-        const dyValueEl = card.querySelector('[data-role="dy-value"]');
-        const priceStatusEl = card.querySelector('[data-role="price-status"]');
-        const dyStatusEl = card.querySelector('[data-role="dy-status"]');
-        const tickStatusEl = card.querySelector('[data-role="tick-status"]');
-        const sourceEl = card.querySelector('[data-role="price-source"]');
-        const sourceUpdateEl = card.querySelector('[data-role="source-update"]');
-        const timestampEl = card.querySelector('[data-role="timestamp"]');
-
-        const priceStatus = stock.price_status || stock.status || 'mock_data';
-        const dyStatus = stock.dy_status || (stock.status === 'success' ? 'success' : 'fallback_metadata');
-        const noTickSeconds = stock._ui?.noTickSeconds ?? 0;
-        const sourceAgeSeconds = stock._ui?.sourceAgeSeconds;
-        const noTickBadgeClass = noTickSeconds >= NO_TICK_WARNING_SECONDS ? 'stale' : 'ok';
-        const noTickBadgeLabel = noTickSeconds >= NO_TICK_WARNING_SECONDS
-            ? `Sem novo tick há ${noTickSeconds}s`
-            : `Tick recente (${noTickSeconds}s)`;
-        const sourceAgeLabel = sourceAgeSeconds === null
-            ? 'idade N/D'
-            : `há ${formatSecondsLabel(sourceAgeSeconds)}`;
 
         if (tickerEl) tickerEl.textContent = stock.ticker;
         if (companyEl) companyEl.textContent = stock.company_name || stock.ticker;
@@ -373,29 +451,6 @@ function updateStockCards(container, stocks) {
         if (variationValueEl) {
             variationValueEl.textContent = `${stock.variation_percent > 0 ? '+' : ''}${stock.variation_percent.toFixed(2)}%`;
             applyFlashClass(variationValueEl, stock._ui?.variationFlashClass || '');
-        }
-
-        if (dyValueEl) dyValueEl.textContent = formatDividendYield(stock.dy);
-
-        if (priceStatusEl) {
-            priceStatusEl.textContent = `Preço: ${getStatusLabel(priceStatus)}`;
-            priceStatusEl.className = `stock-status-badge ${getStatusClass(priceStatus)}`;
-        }
-        if (dyStatusEl) {
-            dyStatusEl.textContent = `DY: ${getStatusLabel(dyStatus)}`;
-            dyStatusEl.className = `stock-status-badge ${getStatusClass(dyStatus)}`;
-        }
-        if (tickStatusEl) {
-            tickStatusEl.textContent = noTickBadgeLabel;
-            tickStatusEl.className = `stock-status-badge ${noTickBadgeClass}`;
-        }
-
-        if (sourceEl) sourceEl.textContent = `Fonte preço: ${getPriceSourceLabel(stock.price_source)}`;
-        if (sourceUpdateEl) {
-            sourceUpdateEl.textContent = `Atualização da fonte: ${formatStockTimestamp(stock.timestamp)} (${sourceAgeLabel})`;
-        }
-        if (timestampEl) {
-            timestampEl.textContent = `📅 ${formatStockTimestamp(stock.timestamp)}`;
         }
     });
 }
@@ -446,14 +501,6 @@ function getCompanyLogoUrl(ticker) {
     return `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
 }
 
-function formatDividendYield(dy) {
-    if (dy === null || dy === undefined || Number.isNaN(Number(dy))) {
-        return 'N/D';
-    }
-
-    return `${Number(dy).toFixed(2)}%`;
-}
-
 function parseTimestampToMillis(timestamp) {
     if (!timestamp) {
         return null;
@@ -469,14 +516,6 @@ function parseTimestampToMillis(timestamp) {
 
     const parsedMillis = Date.parse(String(timestamp));
     return Number.isNaN(parsedMillis) ? null : parsedMillis;
-}
-
-function formatSecondsLabel(seconds) {
-    if (seconds === null || seconds === undefined) {
-        return 'N/D';
-    }
-
-    return `${seconds}s`;
 }
 
 function formatStockTimestamp(timestamp) {
@@ -642,22 +681,8 @@ function createStockCard(stock) {
     const logoUrl = getCompanyLogoUrl(stock.ticker);
     const logoFallback = (stock.company_name || stock.ticker).slice(0, 2).toUpperCase();
     
-    const priceStatus = stock.price_status || stock.status || 'mock_data';
-    const dyStatus = stock.dy_status || (stock.status === 'success' ? 'success' : 'fallback_metadata');
-    const priceSourceLabel = getPriceSourceLabel(stock.price_source);
-    const noTickSeconds = stock._ui?.noTickSeconds ?? 0;
-    const sourceAgeSeconds = stock._ui?.sourceAgeSeconds;
     const priceFlashClass = stock._ui?.priceFlashClass || '';
     const variationFlashClass = stock._ui?.variationFlashClass || '';
-    const noTickBadgeClass = noTickSeconds >= NO_TICK_WARNING_SECONDS ? 'stale' : 'ok';
-    const noTickBadgeLabel = noTickSeconds >= NO_TICK_WARNING_SECONDS
-        ? `Sem novo tick há ${noTickSeconds}s`
-        : `Tick recente (${noTickSeconds}s)`;
-    const sourceAgeLabel = sourceAgeSeconds === null
-        ? 'idade N/D'
-        : `há ${formatSecondsLabel(sourceAgeSeconds)}`;
-    const timestamp = formatStockTimestamp(stock.timestamp);
-    
     return `
         <div class="stock-card ${variationClass}" data-ticker="${stock.ticker}">
             <div class="stock-header-row">
@@ -686,59 +711,40 @@ function createStockCard(stock) {
                     <span class="variation-value ${variationFlashClass}" data-role="variation-value">${stock.variation_percent > 0 ? '+' : ''}${stock.variation_percent.toFixed(2)}%</span>
                 </div>
             </div>
-            
-            <div class="stock-dy">
-                <label>DY (Dividend Yield)</label>
-                <div class="value" data-role="dy-value">${formatDividendYield(stock.dy)}</div>
-            </div>
-            <div class="stock-status-row">
-                <span class="stock-status-badge ${getStatusClass(priceStatus)}" data-role="price-status">Preço: ${getStatusLabel(priceStatus)}</span>
-                <span class="stock-status-badge ${getStatusClass(dyStatus)}" data-role="dy-status">DY: ${getStatusLabel(dyStatus)}</span>
-                <span class="stock-status-badge ${noTickBadgeClass}" data-role="tick-status">${noTickBadgeLabel}</span>
-            </div>
-            <div class="stock-source" data-role="price-source">Fonte preço: ${priceSourceLabel}</div>
-            <div class="stock-source-update" data-role="source-update">Atualização da fonte: ${formatStockTimestamp(stock.timestamp)} (${sourceAgeLabel})</div>
-            
-            <div class="stock-timestamp" data-role="timestamp">📅 ${timestamp}</div>
         </div>
     `;
 }
 
 // Atualizar timestamp da última atualização
 function updateLastUpdate(timestamp) {
-    const lastUpdateEl = document.getElementById('lastUpdate');
+    const lastUpdateEl = document.getElementById('lastUpdateClock');
     if (!lastUpdateEl) {
         return;
     }
 
     if (!timestamp) {
-        lastUpdateEl.textContent = 'Última atualização: horário indisponível';
+        lastUpdateEl.textContent = 'Data atualização: horário indisponível';
         return;
     }
 
     const timestampMs = parseTimestampToMillis(timestamp);
     if (timestampMs === null) {
-        lastUpdateEl.textContent = 'Última atualização: horário indisponível';
+        lastUpdateEl.textContent = 'Data atualização: horário indisponível';
         return;
     }
 
     const date = new Date(timestampMs);
-    const brasiliaTime = new Intl.DateTimeFormat('pt-BR', {
-        timeZone: 'America/Sao_Paulo',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-    }).format(date);
-    const newYorkTime = new Intl.DateTimeFormat('pt-BR', {
-        timeZone: 'America/New_York',
+    const formattedDateTime = new Intl.DateTimeFormat('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
         hour: '2-digit',
         minute: '2-digit',
         second: '2-digit',
         hour12: false
     }).format(date);
 
-    lastUpdateEl.textContent = `Última atualização: Brasília ${brasiliaTime} | Nova York ${newYorkTime}`;
+    lastUpdateEl.textContent = `Data atualização: ${formattedDateTime}`;
 }
 
 // Dados de exemplo (mock)
@@ -862,5 +868,82 @@ function getMockData() {
         ],
         dy_source: selectedDySource,
         last_update: now
+    };
+}
+
+function getMockAssetGridData() {
+    return {
+        items: [
+            {
+                ticker: 'NVDA',
+                company_name: 'NVIDIA',
+                current_price: 875.5,
+                dy: 0.03,
+                day_change_pct: 1.14,
+                month_change_pct: 4.92,
+                ytd_change_pct: 12.31,
+                trailing_12m_change_pct: 66.82,
+                trailing_5y_change_pct: 1087.12,
+                trailing_5y_value_pct: 1087.12,
+                trailing_10y_change_pct: 5420.13,
+                trailing_10y_value_pct: 6882.44
+            },
+            {
+                ticker: 'GE',
+                company_name: 'GE Aerospace',
+                current_price: 175.3,
+                dy: 0.37,
+                day_change_pct: -0.53,
+                month_change_pct: 2.37,
+                ytd_change_pct: 7.06,
+                trailing_12m_change_pct: 44.73,
+                trailing_5y_change_pct: 211.15,
+                trailing_5y_value_pct: 211.15,
+                trailing_10y_change_pct: 932.56,
+                trailing_10y_value_pct: 1218.33
+            },
+            {
+                ticker: 'CVX',
+                company_name: 'Chevron',
+                current_price: 152.75,
+                dy: 4.12,
+                day_change_pct: 0.62,
+                month_change_pct: -1.04,
+                ytd_change_pct: 3.18,
+                trailing_12m_change_pct: 12.22,
+                trailing_5y_change_pct: 84.51,
+                trailing_5y_value_pct: 84.51,
+                trailing_10y_change_pct: 248.19,
+                trailing_10y_value_pct: 365.91
+            },
+            {
+                ticker: 'CCJ',
+                company_name: 'Cameco',
+                current_price: 49.2,
+                dy: null,
+                day_change_pct: -1.2,
+                month_change_pct: -3.44,
+                ytd_change_pct: 9.65,
+                trailing_12m_change_pct: 28.17,
+                trailing_5y_change_pct: 356.8,
+                trailing_5y_value_pct: 356.8,
+                trailing_10y_change_pct: 1120.42,
+                trailing_10y_value_pct: 1492.03
+            },
+            {
+                ticker: 'SQM',
+                company_name: 'Sociedad Quimica y Minera',
+                current_price: 47.05,
+                dy: null,
+                day_change_pct: 0.27,
+                month_change_pct: 5.02,
+                ytd_change_pct: 11.73,
+                trailing_12m_change_pct: -14.96,
+                trailing_5y_change_pct: 63.4,
+                trailing_5y_value_pct: 63.4,
+                trailing_10y_change_pct: 174.68,
+                trailing_10y_value_pct: 256.57
+            }
+        ]
     };
 }
